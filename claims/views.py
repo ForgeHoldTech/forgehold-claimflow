@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+import requests
 from pgvector.django import CosineDistance
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -7,10 +8,21 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .embeddings import embed_text
+from .llm import answer_question
 from .models import Claim, DenialLetter
 from .mongo import get_db
 from .serializers import ClaimSerializer
 from .tasks import check_claim_status
+
+
+def find_letters(query, limit=3):
+    vector = embed_text(query)
+    return list(
+        DenialLetter.objects.exclude(embedding__isnull=True)
+        .select_related("claim")
+        .annotate(distance=CosineDistance("embedding", vector))
+        .order_by("distance")[:limit]
+    )
 
 
 class ClaimViewSet(viewsets.ModelViewSet):
@@ -56,13 +68,6 @@ class LetterSearchView(APIView):
                 {"detail": "The query parameter 'q' is required."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        vector = embed_text(query)
-        letters = (
-            DenialLetter.objects.exclude(embedding__isnull=True)
-            .select_related("claim")
-            .annotate(distance=CosineDistance("embedding", vector))
-            .order_by("distance")[:3]
-        )
         results = [
             {
                 "letter_id": letter.id,
@@ -71,6 +76,38 @@ class LetterSearchView(APIView):
                 "content": letter.content,
                 "distance": round(float(letter.distance), 4),
             }
-            for letter in letters
+            for letter in find_letters(query)
         ]
         return Response({"query": query, "results": results})
+
+
+class LetterAskView(APIView):
+    def get(self, request):
+        question = request.query_params.get("q", "").strip()
+        if not question:
+            return Response(
+                {"detail": "The query parameter 'q' is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        letters = find_letters(question)
+        if not letters:
+            return Response(
+                {"detail": "No denial letters have been added yet."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        try:
+            answer = answer_question(question, letters)
+        except requests.RequestException:
+            return Response(
+                {"detail": "The language model service is not available."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        sources = [
+            {
+                "claim_number": letter.claim.claim_number,
+                "title": letter.title,
+                "distance": round(float(letter.distance), 4),
+            }
+            for letter in letters
+        ]
+        return Response({"question": question, "answer": answer, "sources": sources})
