@@ -1,0 +1,15 @@
+django
+djangorestframework
+djangorestframework-simplejwt
+django-cors-headers
+psycopg[binary]
+python-dotenv
+pymongo
+celery
+redis
+packaging
+playwright
+pgvector
+requests
+langchain-core
+langchain-ollama

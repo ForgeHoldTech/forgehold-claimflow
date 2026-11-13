@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: claimflow
+          POSTGRES_USER: claimflow
+          POSTGRES_PASSWORD: claimflow_pass
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U claimflow"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DB_NAME: claimflow
+      DB_USER: claimflow
+      DB_PASSWORD: claimflow_pass
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-ci.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-ci.txt
+
+      - name: Run tests
+        run: python manage.py test
