@@ -1,4 +1,5 @@
 from django.db import models
+from pgvector.django import VectorField
 
 
 class Claim(models.Model):
@@ -25,3 +26,27 @@ class Claim(models.Model):
 
     def __str__(self):
         return f"{self.claim_number} - {self.patient_name}"
+
+
+class DenialLetter(models.Model):
+    claim = models.ForeignKey(
+        Claim,
+        on_delete=models.CASCADE,
+        related_name="denial_letters",
+    )
+    title = models.CharField(max_length=200)
+    content = models.TextField()
+    embedding = VectorField(dimensions=384, null=True, blank=True, editable=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def save(self, *args, **kwargs):
+        from .embeddings import embed_text
+
+        self.embedding = embed_text(self.content)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.claim.claim_number} - {self.title}"

@@ -1,17 +1,28 @@
 from datetime import datetime, timezone
 
 from rest_framework import status, viewsets
+from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import Claim
 from .mongo import get_db
 from .serializers import ClaimSerializer
+from .tasks import check_claim_status
 
 
 class ClaimViewSet(viewsets.ModelViewSet):
     queryset = Claim.objects.all()
     serializer_class = ClaimSerializer
+
+    @action(detail=True, methods=["post"], url_path="check-status")
+    def check_status(self, request, pk=None):
+        claim = self.get_object()
+        task = check_claim_status.delay(claim.claim_number)
+        return Response(
+            {"task_id": task.id, "claim_number": claim.claim_number},
+            status=status.HTTP_202_ACCEPTED,
+        )
 
 
 class BotLogView(APIView):
