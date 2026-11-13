@@ -1,6 +1,5 @@
 from datetime import datetime, timezone
 
-import requests
 from pgvector.django import CosineDistance
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -8,7 +7,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .embeddings import embed_text
-from .llm import answer_question
+from .llm import LLMUnavailableError, answer_question
 from .models import Claim, DenialLetter
 from .mongo import get_db
 from .serializers import ClaimSerializer
@@ -97,7 +96,7 @@ class LetterAskView(APIView):
             )
         try:
             answer = answer_question(question, letters)
-        except requests.RequestException:
+        except LLMUnavailableError:
             return Response(
                 {"detail": "The language model service is not available."},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
