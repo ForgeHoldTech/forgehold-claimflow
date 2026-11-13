@@ -28,6 +28,30 @@ services:
     ports:
       - "6380:6379"
 
+  api:
+    build: .
+    container_name: claimflow_api
+    restart: unless-stopped
+    depends_on:
+      - db
+      - mongo
+      - redis
+    environment:
+      DB_NAME: claimflow
+      DB_USER: claimflow
+      DB_PASSWORD: claimflow_pass
+      DB_HOST: db
+      DB_PORT: "5432"
+      MONGO_URI: mongodb://mongo:27017
+      MONGO_DB: claimflow_logs
+      REDIS_URL: redis://redis:6379/0
+      OLLAMA_URL: http://host.docker.internal:11434
+      OLLAMA_MODEL: qwen2.5:3b-instruct
+      ALLOWED_HOSTS: localhost,127.0.0.1
+      DEBUG: "False"
+    ports:
+      - "8001:8000"
+
 volumes:
   postgres_data:
   mongo_data:
