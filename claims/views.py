@@ -1,11 +1,13 @@
 from datetime import datetime, timezone
 
+from pgvector.django import CosineDistance
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Claim
+from .embeddings import embed_text
+from .models import Claim, DenialLetter
 from .mongo import get_db
 from .serializers import ClaimSerializer
 from .tasks import check_claim_status
@@ -44,3 +46,31 @@ class BotLogView(APIView):
         payload["id"] = str(result.inserted_id)
         payload["created_at"] = created_at.isoformat()
         return Response(payload, status=status.HTTP_201_CREATED)
+
+
+class LetterSearchView(APIView):
+    def get(self, request):
+        query = request.query_params.get("q", "").strip()
+        if not query:
+            return Response(
+                {"detail": "The query parameter 'q' is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        vector = embed_text(query)
+        letters = (
+            DenialLetter.objects.exclude(embedding__isnull=True)
+            .select_related("claim")
+            .annotate(distance=CosineDistance("embedding", vector))
+            .order_by("distance")[:3]
+        )
+        results = [
+            {
+                "letter_id": letter.id,
+                "claim_number": letter.claim.claim_number,
+                "title": letter.title,
+                "content": letter.content,
+                "distance": round(float(letter.distance), 4),
+            }
+            for letter in letters
+        ]
+        return Response({"query": query, "results": results})
